@@ -17,12 +17,13 @@ import {
   HTTP_STATUS,
   ERROR_MESSAGES,
 } from '../constant';
+import { isOriginAllowed } from './cors-origin';
 import { NativeMessagingHost } from '../native-messaging-host';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { randomUUID } from 'node:crypto';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
-import { getMcpServer } from '../mcp/mcp-server';
+import { createMcpServer } from '../mcp/mcp-server';
 import { AgentStreamManager } from '../agent/stream-manager';
 import { AgentChatService } from '../agent/chat-service';
 import { CodexEngine } from '../agent/engines/codex';
@@ -76,11 +77,7 @@ export class Server {
         if (!origin) {
           return cb(null, true);
         }
-        // Check if origin matches any pattern in whitelist
-        const allowed = SERVER_CONFIG.CORS_ORIGIN.some((pattern) =>
-          pattern instanceof RegExp ? pattern.test(origin) : origin.startsWith(pattern),
-        );
-        cb(null, allowed);
+        cb(null, isOriginAllowed(origin, SERVER_CONFIG.CORS_ORIGIN));
       },
       methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
       credentials: true,
@@ -177,12 +174,13 @@ export class Server {
         const transport = new SSEServerTransport('/messages', reply.raw);
         this.transportsMap.set(transport.sessionId, transport);
 
+        const mcpServer = createMcpServer();
+        await mcpServer.connect(transport);
+
         reply.raw.on('close', () => {
           this.transportsMap.delete(transport.sessionId);
+          mcpServer.close().catch(() => {});
         });
-
-        const server = getMcpServer();
-        await server.connect(transport);
 
         reply.raw.write(':\n\n');
       } catch (error) {
@@ -221,6 +219,7 @@ export class Server {
         // Transport found, proceed
       } else if (!sessionId && isInitializeRequest(request.body)) {
         const newSessionId = randomUUID();
+        const mcpServer = createMcpServer();
         transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => newSessionId,
           onsessioninitialized: (initializedSessionId) => {
@@ -234,8 +233,12 @@ export class Server {
           if (transport?.sessionId && this.transportsMap.get(transport.sessionId)) {
             this.transportsMap.delete(transport.sessionId);
           }
+          // The SDK binds one Protocol to one transport; release this session's
+          // server so the singleton mistake (second initialize forever 500s)
+          // cannot recur.
+          mcpServer.close().catch(() => {});
         };
-        await getMcpServer().connect(transport);
+        await mcpServer.connect(transport);
       } else {
         reply.code(HTTP_STATUS.BAD_REQUEST).send({ error: ERROR_MESSAGES.INVALID_MCP_REQUEST });
         return;
@@ -264,25 +267,28 @@ export class Server {
         return;
       }
 
-      reply.raw.setHeader('Content-Type', 'text/event-stream');
-      reply.raw.setHeader('Cache-Control', 'no-cache');
-      reply.raw.setHeader('Connection', 'keep-alive');
-      reply.raw.flushHeaders();
+      // Hand the response to the transport before anything is written to it.
+      //
+      // The SDK's StreamableHTTPServerTransport owns the response lifecycle and
+      // calls writeHead() itself. Setting the SSE headers here and calling
+      // flushHeaders() first made that throw ERR_HTTP_HEADERS_SENT. On a stream
+      // whose client had gone away the throw repeated without backoff, which on
+      // one machine wrote 1.3 GB of stack traces per day into the stderr log.
+      reply.hijack();
+
+      // Registered before the await: handleRequest() does not settle while the
+      // SSE stream is open, so anything after it never runs for a live stream.
+      request.socket.on('close', () => {
+        request.log.info(`SSE client disconnected for session: ${sessionId}`);
+      });
 
       try {
         await transport.handleRequest(request.raw, reply.raw);
-        if (!reply.sent) {
-          reply.hijack();
-        }
       } catch (error) {
         if (!reply.raw.writableEnded) {
           reply.raw.end();
         }
       }
-
-      request.socket.on('close', () => {
-        request.log.info(`SSE client disconnected for session: ${sessionId}`);
-      });
     });
 
     // MCP DELETE endpoint

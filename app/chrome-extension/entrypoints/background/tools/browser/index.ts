@@ -28,3 +28,4 @@ export {
   performanceAnalyzeInsightTool,
 } from './performance';
 export { gifRecorderTool } from './gif-recorder';
+export { getCookiesTool, getLocalStorageTool, getSessionStorageTool } from './storage';

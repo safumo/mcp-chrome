@@ -47,3 +47,5 @@ CLAUDE.md
 
 .docs/
 .claude/
+# Tool-captured browsing data (may contain personal info, never commit)
+browse/

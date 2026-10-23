@@ -1,0 +1,59 @@
+name: Build Self-use Artifacts
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared package
+        run: pnpm run build:shared
+
+      - name: Build chrome extension (zip)
+        run: |
+          pnpm run build:extension
+          pnpm --filter chrome-mcp-server exec wxt zip
+
+      - name: Build native server (bridge)
+        run: |
+          pnpm run build:native
+          pnpm --filter mcp-chrome-bridge test
+
+      - name: Package native server
+        run: |
+          tar -czf native-server-dist.tar.gz -C app/native-server dist
+
+      - name: Upload extension artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chrome-extension-zip
+          path: app/chrome-extension/.output/*.zip
+          retention-days: 30
+
+      - name: Upload native server artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-server-dist
+          path: native-server-dist.tar.gz
+          retention-days: 30

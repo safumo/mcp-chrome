@@ -234,6 +234,26 @@ async function ensureWindowsFilePermissions(packageDistDir: string): Promise<voi
 }
 
 /**
+ * Extension ids allowed to open the native-messaging connection.
+ *
+ * Defaults to the published extension id. Override with a comma-separated
+ * CHROME_MCP_ALLOWED_EXTENSION_IDS when running an unpacked build — Chrome
+ * derives that build's id from its directory path, and without the override
+ * Chrome itself refuses the native-messaging connection (allowed_origins),
+ * even when the bridge's own CORS check would accept it.
+ */
+function allowedExtensionIds(): string[] {
+  const override = process.env.CHROME_MCP_ALLOWED_EXTENSION_IDS;
+  if (override && override.trim()) {
+    return override
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean);
+  }
+  return [EXTENSION_ID];
+}
+
+/**
  * Create Native Messaging host manifest content
  */
 export async function createManifestContent(): Promise<any> {
@@ -244,7 +264,7 @@ export async function createManifestContent(): Promise<any> {
     description: DESCRIPTION,
     path: mainPath, // Node.js可执行文件路径
     type: 'stdio',
-    allowed_origins: [`chrome-extension://${EXTENSION_ID}/`],
+    allowed_origins: allowedExtensionIds().map((id) => `chrome-extension://${id}/`),
   };
 }
 

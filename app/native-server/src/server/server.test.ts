@@ -24,4 +24,36 @@ describe('服务器测试', () => {
       message: 'pong',
     });
   });
+
+  test('sequential MCP sessions can each initialize (per-session server)', async () => {
+    const initBody = {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2024-11-05',
+        capabilities: {},
+        clientInfo: { name: 'test', version: '0' },
+      },
+    };
+
+    for (let i = 0; i < 2; i++) {
+      const res = await supertest(Server.getInstance().server)
+        .post('/mcp')
+        .set('Accept', 'application/json, text/event-stream')
+        .send(initBody)
+        .expect(200);
+      expect(res.headers['mcp-session-id']).toBeTruthy();
+
+      // The SDK transport answers the DELETE itself (200); either way the
+      // session must be closed so the next initialize gets a fresh server.
+      await supertest(Server.getInstance().server)
+        .delete('/mcp')
+        .set('mcp-session-id', res.headers['mcp-session-id'])
+        .expect((r) => {
+          expect(r.status).toBeGreaterThanOrEqual(200);
+          expect(r.status).toBeLessThan(300);
+        });
+    }
+  });
 });

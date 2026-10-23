@@ -25,6 +25,10 @@ export const TOOL_NAMES = {
     BOOKMARK_SEARCH: 'chrome_bookmark_search',
     BOOKMARK_ADD: 'chrome_bookmark_add',
     BOOKMARK_DELETE: 'chrome_bookmark_delete',
+    // Site storage readers (fork addition)
+    GET_COOKIES: 'chrome_get_cookies',
+    GET_LOCAL_STORAGE: 'chrome_get_local_storage',
+    GET_SESSION_STORAGE: 'chrome_get_session_storage',
     INJECT_SCRIPT: 'chrome_inject_script',
     SEND_COMMAND_TO_INJECT_SCRIPT: 'chrome_send_command_to_inject_script',
     JAVASCRIPT: 'chrome_javascript',
@@ -753,6 +757,53 @@ export const TOOL_SCHEMAS: Tool[] = [
         },
       },
       required: [],
+    },
+  },
+  // Site-storage readers (fork addition): read a specific website's stored data.
+  {
+    name: TOOL_NAMES.BROWSER.GET_COOKIES,
+    description:
+      'Get all cookies set for a specific website, including HttpOnly cookies that JavaScript on the page cannot read. Returns name, value, domain, path, secure, httpOnly, expiration and sameSite for each cookie.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: {
+          type: 'string',
+          description:
+            'Website to read cookies for. Accepts a full origin (https://example.com) or a bare domain (example.com); subdomains are matched.',
+        },
+      },
+      required: ['url'],
+    },
+  },
+  {
+    name: TOOL_NAMES.BROWSER.GET_LOCAL_STORAGE,
+    description:
+      'Read all localStorage key/value pairs for a specific website. Persisted storage, survives browser restarts. The extension navigates to (or reuses) a tab at this origin to read its localStorage.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: {
+          type: 'string',
+          description: 'Website to read localStorage for, e.g. https://example.com',
+        },
+      },
+      required: ['url'],
+    },
+  },
+  {
+    name: TOOL_NAMES.BROWSER.GET_SESSION_STORAGE,
+    description:
+      'Read all sessionStorage key/value pairs for a specific website. Scoped to the current browsing session and tab; gone when the tab closes. The extension navigates to (or reuses) a tab at this origin to read its sessionStorage.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: {
+          type: 'string',
+          description: 'Website to read sessionStorage for, e.g. https://example.com',
+        },
+      },
+      required: ['url'],
     },
   },
   // {

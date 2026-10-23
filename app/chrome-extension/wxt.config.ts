@@ -42,6 +42,8 @@ export default defineConfig({
       'tabs',
       'activeTab',
       'scripting',
+      // Site-storage readers (fork addition): chrome_get_cookies et al.
+      'cookies',
       'contextMenus',
       'downloads',
       'webRequest',

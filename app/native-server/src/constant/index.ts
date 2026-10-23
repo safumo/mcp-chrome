@@ -1,3 +1,6 @@
+import { EXTENSION_ID } from '../scripts/constant';
+import type { OriginPattern } from '../server/cors-origin';
+
 export enum NATIVE_MESSAGE_TYPE {
   START = 'start',
   STARTED = 'started',
@@ -17,14 +20,50 @@ export const TIMEOUTS = {
   PROCESS_DATA_TIMEOUT: 20000,
 } as const;
 
+/**
+ * Extension ids allowed to call this server.
+ *
+ * Defaults to the published extension id, the same one `register` writes into the
+ * native-messaging manifest's `allowed_origins`.
+ *
+ * Why pin it instead of allowing every `chrome-extension://` origin: this server
+ * exposes browser automation and filesystem routes on loopback, so a blanket
+ * scheme match lets any extension the user happens to have installed drive it.
+ *
+ * Override with a comma-separated `CHROME_MCP_ALLOWED_EXTENSION_IDS` when running
+ * an unpacked build of the extension — Chrome assigns those a different id, and
+ * without the override the bridge will reject it.
+ */
+function allowedExtensionIds(): string[] {
+  const override = process.env.CHROME_MCP_ALLOWED_EXTENSION_IDS;
+  if (override && override.trim()) {
+    return override
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean);
+  }
+  return [EXTENSION_ID];
+}
+
 // Server configuration
 export const SERVER_CONFIG = {
   HOST: '127.0.0.1',
   /**
-   * CORS origin whitelist - only allow Chrome/Firefox extensions and local debugging.
-   * Use RegExp patterns for extension origins, string for exact match.
+   * CORS origin allow-list for the local HTTP API.
+   *
+   * Entries are matched as origins — scheme plus host — by
+   * `server/cors-origin.ts`, never as string prefixes. The prefix form this
+   * replaced let `http://127.0.0.1.<attacker-domain>` through.
+   *
+   * `moz-extension://` is not listed: nothing in this project targets Firefox,
+   * `register` only writes Chrome and Chromium native-messaging manifests, so a
+   * blanket Firefox-extension entry granted access without enabling any
+   * supported configuration.
    */
-  CORS_ORIGIN: [/^chrome-extension:\/\//, /^moz-extension:\/\//, 'http://127.0.0.1'] as const,
+  CORS_ORIGIN: [
+    ...allowedExtensionIds().map((id) => `chrome-extension://${id}`),
+    'http://127.0.0.1',
+  ] as readonly OriginPattern[],
   LOGGER_ENABLED: false,
 } as const;
 
