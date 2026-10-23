@@ -34,12 +34,12 @@ Chrome 扩展 Service Worker (app/chrome-extension)
 
 ## 构建产物（CI/CD）
 
-推送至 `master` 分支或手动触发（Actions → Build Self-use Artifacts → Run workflow）后，GitHub Actions 产出两个产物（保留 30 天）：
+推送至 `master` 分支或手动触发（Actions → Build Self-use Artifacts → Run workflow）后，GitHub Actions 构建并**自动更新 [Release `latest`](https://github.com/safumo/mcp-chrome/releases/tag/latest)**（打 `v*` tag 则发布正式版本），同时保留 Actions artifact 30 天：
 
-| Artifact               | 内容                               | 用途                            |
-| ---------------------- | ---------------------------------- | ------------------------------- |
-| `chrome-extension-zip` | `wxt zip` 打包的扩展               | 解压后加载 unpacked，或仅作备份 |
-| `native-server-dist`   | `app/native-server/dist` 的 tar 包 | 直接部署 bridge                 |
+| 产物                        | 内容                               | 用途                                    |
+| --------------------------- | ---------------------------------- | --------------------------------------- |
+| `chrome-extension.zip`      | `wxt zip` 打包的扩展               | 解压后加载 unpacked                     |
+| `native-server-dist.tar.gz` | `app/native-server/dist` 的 tar 包 | 解压后 `node dist/cli.js register` 即用 |
 
 本地构建：
 
@@ -53,7 +53,29 @@ pnpm --filter mcp-chrome-bridge test   # 跑测试
 
 ## 安装
 
-### 1. 安装 Chrome 扩展（unpacked）
+### 0. 新机器快速安装（无需编译）
+
+每次 push 到 `master`，CI 会自动更新 Release [`latest`](https://github.com/safumo/mcp-chrome/releases/tag/latest)，内含改过的扩展和 bridge。
+
+**① 安装 Chrome 扩展**：
+
+1. 下载 Release 里的 `chrome-extension.zip` 并解压
+2. `chrome://extensions/` → 开启"开发者模式" → "加载已解压的扩展程序" → 选择解压出的目录
+3. 记下扩展 ID（`chrome://extensions/` 卡片上的 32 位 ID）
+
+**② 安装 bridge**：
+
+```bash
+curl -LO https://github.com/safumo/mcp-chrome/releases/download/latest/native-server-dist.tar.gz
+tar xzf native-server-dist.tar.gz        # 得到 dist/
+CHROME_MCP_ALLOWED_EXTENSION_IDS=<你的扩展ID> node dist/cli.js register
+```
+
+`register` 会自动写 `node_path.txt` 和 native messaging manifest。之后打开 Chrome，扩展 autoConnect 即连上 bridge。
+
+> 以下"从源码安装"一节供本地开发参考。
+
+### 1. 安装 Chrome 扩展（unpacked，源码构建）
 
 1. `pnpm build:extension`
 2. 打开 `chrome://extensions/`，开启右上角"开发者模式"
@@ -62,7 +84,7 @@ pnpm --filter mcp-chrome-bridge test   # 跑测试
 
 > unpacked 扩展的 ID 由路径推导且**随路径变化**；移动目录后 ID 会变，需要重新注册 bridge。
 
-### 2. 安装并注册 bridge
+### 2. 安装并注册 bridge（源码构建）
 
 ```bash
 cd app/native-server
